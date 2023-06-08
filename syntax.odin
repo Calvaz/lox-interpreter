@@ -1,33 +1,28 @@
 package interpreter
 
-@private
-Expression_Types :: union {
-    Literal,
-    Unary,
-    Binary,
-    Grouping,
-}
-
-Operator :: enum {
-
-}
-
-Binary :: struct {
-    expr: Expression,
-    operator: Operator,
-    right: Expression
+Expression :: union {
+    ^Unary,
+    ^Binary,
+    ^Literal,
+    ^Grouping,
 }
 
 Unary :: struct {
-    left: Operator,
+    operator: Token,
+    right: Expression,
+}
+
+Binary :: struct {
+    left: Expression,
+    operator: Token,
+    right: Expression,
+}
+
+Literal :: struct {
+    value: rawptr,
+}
+
+Grouping :: struct {
     expr: Expression,
 }
 
-@private
-Expression :: struct {
-    type: Expression_Types,
-}
-
-new_expression :: proc(type: Expression_Types) -> Expression {
-    return Expression{ type }
-}

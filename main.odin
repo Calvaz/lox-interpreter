@@ -62,8 +62,18 @@ run :: proc(source: string) {
     }
 }
 
-error :: proc(line: u32, message: string) {
+error :: proc{scanner_error, parser_error}
+
+scanner_error :: proc(line: u32, message: string) {
     report(line, "", message)
+}
+
+parser_error :: proc(token: Token, message: string) {
+    if token.type == .Eof {
+        report(token.line, " at end", message)
+    } else {
+        report(token.line, fmt.tprintf(" at '%v'", token.lexeme), message)
+    }
 }
 
 report :: proc(line: u32, location: string, message: string) {
