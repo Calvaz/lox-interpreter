@@ -4,6 +4,8 @@ Token_Type :: enum {
     Left_Paren, Right_Paren, Left_Brace, Right_Brace,
     Comma, Dot, Minus, Plus, Semicolon, Slash, Star,
 
+    Question, Colon,
+
     Bang, Bang_Equal,
     Equal, Equal_Equal,
     Greater, Greater_Equal,

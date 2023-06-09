@@ -48,7 +48,7 @@ scan_tokens :: proc(scanner: ^Scanner) -> [dynamic]Token {
         scan_token(scanner);
     }
 
-    append(&scanner.tokens, new_token(.Eof, " ", line, rawptr(uintptr(0))))
+    append(&scanner.tokens, new_token(.Eof, "", line, nil))
     return scanner.tokens
 }
 
@@ -102,7 +102,6 @@ scan_token :: proc(scanner: ^Scanner) {
             }
         }
     }
-    fmt.println(c)
 }
 
 @private
@@ -125,7 +124,6 @@ add_token :: proc(scanner: ^Scanner, type: Token_Type) {
 add_token_to_scanner :: proc(scanner: ^Scanner, type: Token_Type, value: rawptr) {
     text := scanner.source[start:current]
     token := new_token(type, text, line, value)
-    fmt.println(token)
     append(&scanner.tokens, token)
 }
 
