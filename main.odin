@@ -6,6 +6,7 @@ import "core:io"
 import "core:strings"
 
 had_error: bool = false
+had_runtime_error: bool = false
 
 main :: proc() {
     args := os.args 
@@ -34,6 +35,9 @@ run_file :: proc(path: string) {
     if had_error {
         os.exit(65)
     }
+    if had_runtime_error {
+        os.exit(70)
+    }
 }
 
 run_prompt :: proc() {
@@ -43,7 +47,7 @@ run_prompt :: proc() {
         buffer: [256]u8
         bytes_r, err := os.read(os.stdin, buffer[:]);
         if err < 0 {
-            fmt.println(err)
+            fmt.println(fmt.tprintf("Error while reading the file: %v", err))
         }
         run(string(buffer[:bytes_r]))
     }
@@ -61,10 +65,15 @@ run :: proc(source: string) {
     }
 
     parser := new_parser(scanner.tokens)
-    expr := parse(&parser)
+    statements := parse(&parser)
+    if had_error {
+        return
+    }
+
+    interpret(statements)
 }
 
-error :: proc{scanner_error, parser_error}
+error :: proc{scanner_error, parser_error, runtime_error}
 
 scanner_error :: proc(line: u32, message: string) {
     report(line, "", message)
@@ -72,13 +81,18 @@ scanner_error :: proc(line: u32, message: string) {
 
 parser_error :: proc(token: Token, message: string) {
     if token.type == .Eof {
-        report(token.line, " at end", message)
+        report(token.line, "at end", message)
     } else {
-        report(token.line, fmt.tprintf(" at '%v'", token.lexeme), message)
+        report(token.line, fmt.tprintf("at '%v'", token.lexeme), message)
     }
 }
 
+runtime_error :: proc(err: Runtime_Error) {
+    fmt.println(fmt.tprintf("%v\n[line %v]", err.message, err.token.line))
+    had_runtime_error = true
+}
+
 report :: proc(line: u32, location: string, message: string) {
-    fmt.tprintf("[line %v] Error %v: %v", line, location, message)
+    fmt.println(fmt.tprintf("[line %v] Error %v: %v", line, location, message))
 }
 

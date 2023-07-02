@@ -6,13 +6,12 @@ import "core:mem"
 Token :: struct {
     type: Token_Type,
     lexeme: string,
-    literal: rawptr,
     line: u32,
+    literal: rawptr,
 }
 
 new_token :: proc(type: Token_Type, lexeme: string, line: u32, value: rawptr) -> Token {
-    fmt.println(value)
-    return Token{ type, lexeme, value, line } 
+    return Token{ type = type, lexeme = lexeme, line = line, literal = value } 
 }
 
 to_string :: proc(token: ^Token) -> string {

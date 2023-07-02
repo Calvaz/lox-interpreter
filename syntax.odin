@@ -4,12 +4,20 @@ import "core:strings"
 import "core:fmt"
 import "core:mem"
 
+
+Statement :: union {
+    Expression,
+    ^Print,
+    ^Var,
+}
+
 Expression :: union {
     ^Unary,
     ^Binary,
     ^Ternary,
     ^Literal,
     ^Grouping,
+    ^Variable,
 }
 
 Unary :: struct {
@@ -25,10 +33,8 @@ Binary :: struct {
 
 Ternary :: struct {
     left: Expression,
-    first_operator: Token,
-    middle: Expression,
-    second_operator: Token,
-    right: Expression,
+    first_exp: Expression,
+    second_exp: Expression,
 }
 
 Literal :: struct {
@@ -37,6 +43,19 @@ Literal :: struct {
 
 Grouping :: struct {
     expr: Expression,
+}
+
+Print :: struct {
+    expr: Expression,
+}
+
+Var :: struct {
+    name: Token,
+    initializer: Expression,
+}
+
+Variable :: struct {
+    name: Token,
 }
 
 print_expression :: proc{

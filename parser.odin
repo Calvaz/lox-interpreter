@@ -12,13 +12,91 @@ new_parser :: proc(tokens: [dynamic]Token) -> Parser {
     return Parser{ tokens, 0 }
 }
 
-parse :: proc(parser: ^Parser) -> Expression {
+parse :: proc(parser: ^Parser) -> [dynamic]Statement {
+    statements: [dynamic]Statement
+    for (!is_at_parser_end(parser)) {
+        stmt, err := new_declaration(parser)
+        if err != .None {
+            return nil
+        }
+
+        append(&statements, stmt)
+    }
+    return statements
+}
+
+@private
+new_declaration :: proc(parser: ^Parser) -> (Statement, Error) {
+    decl: Statement
+    err: Error = .None
+    if match(parser, []Token_Type{.Var}) {
+        decl, err = var_declaration(parser)
+
+    } else if match(parser, []Token_Type{.Print}) {
+        decl, err = print_statement(parser)
+
+    } else {
+        decl, err = expression_statement(parser)
+    }
+
+    if _, ok := err.(Parse_Error); ok {
+        synchronize(parser)
+        return nil, .None
+    }
+
+    return decl, .None
+}
+
+var_declaration :: proc(parser: ^Parser) -> (Statement, Error) {
+    name, c_err := consume(parser, .Identifier, "Expect variable name.")
+    if c_err != .None {
+        return nil, c_err
+    }
+
+    initializer: Expression
+    if (match(parser, []Token_Type{.Equal})) {
+        err: Error
+        initializer, err = expression(parser)
+        if err != .None {
+            return nil, err
+        }
+    }
+
+    _, c_err = consume(parser, .Semicolon, "Expect ';' after variable declaration.")
+    if c_err != .None {
+        return nil, c_err
+    }
+
+    var := new(Var)
+    var.name = name.?
+    var.initializer = initializer
+    return var, .None
+}
+
+print_statement :: proc(parser: ^Parser) -> (Statement, Error) {
     expr, err := expression(parser)
     if err != .None {
-        return nil
+        return nil, err
     }
-    fmt.println(expr)
-    return expr
+    _, c_err := consume(parser, .Semicolon, "Expect ';' after expression.")
+    if c_err != .None {
+        return nil, c_err
+    }
+    stmt := new(Print)
+    stmt.expr = expr
+    return stmt, .None
+}
+
+expression_statement :: proc(parser: ^Parser) -> (Statement, Error) {
+    expr, err := expression(parser)
+    if err != .None {
+        return nil, err
+    }
+    _, c_err := consume(parser, .Semicolon, "Expect ';' after expression.")
+    if c_err != .None {
+        return nil, c_err
+    }
+    return expr, .None
 }
 
 /*
@@ -39,7 +117,7 @@ comparison     → term {{ > | >= | < | <= } term }*
 term           → factor {{ - | + } factor }*
 factor         → unary {{ / | * } unary }*
 unary          → { ! | - } unary | primary
-primary        → NUMBER | STRING | true | false | nil | ( expression )
+primary        → NUMBER | STRING | true | false | nil | ( expression ) | IDENTIFIER
 */
 
 evaluate_expression :: proc(parser: ^Parser, handler: proc(parser: ^Parser) -> (Expression, Error), types: ..Token_Type) -> (Expression, Error) {
@@ -57,7 +135,7 @@ evaluate_expression :: proc(parser: ^Parser, handler: proc(parser: ^Parser) -> (
         expr = &Binary{expr, operator, right}
     }
 
-    return expr, nil
+    return expr, .None
 }
 
 @private
@@ -72,12 +150,8 @@ ternary :: proc(parser: ^Parser) -> (Expression, Error) {
         return nil, err
     }
 
-    if parser_look_ahead(parser).type != .Question {
+    if !match(parser, []Token_Type{.Question}) {
         return equal, .None
-    }
-    first_op, first_op_err := consume(parser, .Question, "Missing '?' for ternary operator.")
-    if first_op_err != .None {
-        return nil, first_op_err
     }
 
     expr1, expr1_err := expression(parser)
@@ -95,8 +169,8 @@ ternary :: proc(parser: ^Parser) -> (Expression, Error) {
         return nil, expr2_err
     }
 
-    expr := &Ternary{equal, first_op.(Token), expr1, second_op.(Token), expr2}
-    return expr, nil
+    expr := &Ternary{equal, expr1, expr2}
+    return expr, .None
 }
 
 @private
@@ -121,7 +195,6 @@ factor :: proc(parser: ^Parser) -> (Expression, Error) {
 
 @private
 unary :: proc(parser: ^Parser) -> (Expression, Error) {
-    expr: Expression
     for match(parser, []Token_Type{.Bang, .Minus}) {
         operator := previous(parser)
         right, err := unary(parser)
@@ -129,8 +202,8 @@ unary :: proc(parser: ^Parser) -> (Expression, Error) {
             return nil, err
         }
 
-        expr = &Unary{operator, right}
-        return expr, nil
+        expr := &Unary{operator, right}
+        return expr, .None
     }
 
     return primary(parser)
@@ -138,21 +211,25 @@ unary :: proc(parser: ^Parser) -> (Expression, Error) {
 
 @private
 primary :: proc(parser: ^Parser) -> (Expression, Error) {
-    expr: Expression
-    err: Error
     if match(parser, []Token_Type{.False, .True, .Nil, .Number, .String}) { 
-        expr = &Literal { previous(parser).literal }
-        return expr, nil
+        expr := &Literal { value = previous(parser).literal }
+        return expr, .None
+    }
+
+    if match(parser, []Token_Type{.Identifier}) {
+        var := &Variable{ previous(parser) }
+        return var, .None
     }
 
     if match(parser, []Token_Type{.Left_Paren}) {
-        expr, err = expression(parser)
+        expr, err := expression(parser)
         _, err = consume(parser, .Right_Paren, "Expect ')' after expression")
         if err != .None {
             return nil, err
         }
 
         expr = &Grouping{ expr }
+        return expr, .None
     }
 
     return nil, _parser_error(parser_look_ahead(parser), "Expected an expression.")
@@ -194,7 +271,7 @@ previous :: proc(parser: ^Parser) -> Token {
 consume :: proc(parser: ^Parser, type: Token_Type, message: string) -> (Maybe(Token), Error) {
     if is_of_type(parser, type) { 
         token := advance_parser(parser)
-        return token, nil
+        return token, .None
     }
     
     return nil, _parser_error(parser_look_ahead(parser), message)
@@ -203,7 +280,7 @@ consume :: proc(parser: ^Parser, type: Token_Type, message: string) -> (Maybe(To
 synchronize :: proc(parser: ^Parser) {
     advance_parser(parser)
 
-    for is_at_parser_end(parser) {
+    for !is_at_parser_end(parser) {
         if previous(parser).type == .Semicolon { return }
 
         #partial switch parser_look_ahead(parser).type {

@@ -70,6 +70,8 @@ scan_token :: proc(scanner: ^Scanner) {
         case '+': add_token(scanner, .Plus)
         case ';': add_token(scanner, .Semicolon)
         case '*': add_token(scanner, .Star)
+        case '?': add_token(scanner, .Question)
+        case ':': add_token(scanner, .Colon)
         case '!': add_token(scanner, is_next_equal_to(scanner, '=') ? .Bang_Equal : .Bang)
         case '=': add_token(scanner, is_next_equal_to(scanner, '=') ? .Equal_Equal : .Equal)
         case '<': add_token(scanner, is_next_equal_to(scanner, '=') ? .Less_Equal : .Equal)
