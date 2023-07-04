@@ -5,12 +5,14 @@ import "core:os"
 import "core:io"
 import "core:strings"
 
+interpreter: Interpreter = { new_environment() }
 had_error: bool = false
 had_runtime_error: bool = false
 
 main :: proc() {
     args := os.args 
     fmt.println(args)
+    //defer delete_environment(&interpreter.environment)
 
     if len(args) > 2 {
         fmt.println("using jlox script")
@@ -56,8 +58,9 @@ run_prompt :: proc() {
 }
 
 run :: proc(source: string) {
+    inte := &interpreter.environment
     scanner := new_scanner(source)
-    defer destroy_scanner(&scanner)
+    //defer destroy_scanner(&scanner)
 
     scan_tokens(&scanner)
     if had_error {
@@ -65,12 +68,16 @@ run :: proc(source: string) {
     }
 
     parser := new_parser(scanner.tokens)
+    //defer delete_parser(&parser)
+
     statements := parse(&parser)
+    //defer delete(statements)
     if had_error {
         return
     }
 
-    interpret(statements)
+    interpret(&interpreter, statements)
+    a := 1
 }
 
 error :: proc{scanner_error, parser_error, runtime_error}

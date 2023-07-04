@@ -12,6 +12,11 @@ new_parser :: proc(tokens: [dynamic]Token) -> Parser {
     return Parser{ tokens, 0 }
 }
 
+delete_parser :: proc(parser: ^Parser) {
+    for t in parser.tokens {
+    }
+}
+
 parse :: proc(parser: ^Parser) -> [dynamic]Statement {
     statements: [dynamic]Statement
     for (!is_at_parser_end(parser)) {
@@ -34,6 +39,9 @@ new_declaration :: proc(parser: ^Parser) -> (Statement, Error) {
 
     } else if match(parser, []Token_Type{.Print}) {
         decl, err = print_statement(parser)
+
+    } else if match(parser,  []Token_Type{.Left_Brace}) {
+        decl, err = block_statement(parser)
 
     } else {
         decl, err = expression_statement(parser)
@@ -99,6 +107,23 @@ expression_statement :: proc(parser: ^Parser) -> (Statement, Error) {
     return expr, .None
 }
 
+block_statement :: proc(parser: ^Parser) -> (Statement, Error) {
+    statements: [dynamic]Statement
+
+    for !is_of_type(parser, .Right_Brace) && !is_at_parser_end(parser) {
+        decl, err := new_declaration(parser)
+        if err != .None {
+            return nil, err
+        }
+        append(&statements, decl)
+    }
+
+    consume(parser, .Right_Brace, "Expect '}' after a block.")
+    stmt := new(Block)
+    stmt.statements = statements
+    return stmt, .None
+}
+
 /*
 expression     → literal | unary | binary | grouping  
 literal        → NUMBER | STRING | true | false | nil 
@@ -110,7 +135,8 @@ operator       → == | != | < | <= | > | >= | + | - | * | /
 
 -- PRIORITY --
 
-expression     → ternary
+expression     → assignment
+assignment     → IDENTIFIER = assignment | equality ;
 ternary        → equality ? { expression : expression }?
 equality       → comparison {{ != | == } comparison }*
 comparison     → term {{ > | >= | < | <= } term }*
@@ -140,7 +166,29 @@ evaluate_expression :: proc(parser: ^Parser, handler: proc(parser: ^Parser) -> (
 
 @private
 expression :: proc(parser: ^Parser) -> (Expression, Error) {
-    return ternary(parser)
+    return assignment(parser)
+}
+
+@private
+assignment :: proc(parser: ^Parser) -> (Expression, Error) {
+    expr, err := ternary(parser)
+    if err != .None {
+        return nil, err
+    }
+
+    if match(parser, []Token_Type{.Equal}) {
+        equals := previous(parser)
+        value, a_err := assignment(parser)
+
+        if var, ok := expr.(^Variable); ok {
+            name := var.name
+            assign := Assign{name, value}
+            return &assign, .None
+        }
+
+        parser_error(equals, "Invalid assignment target.")
+    }
+    return expr, .None
 }
 
 @private
@@ -211,8 +259,9 @@ unary :: proc(parser: ^Parser) -> (Expression, Error) {
 
 @private
 primary :: proc(parser: ^Parser) -> (Expression, Error) {
-    if match(parser, []Token_Type{.False, .True, .Nil, .Number, .String}) { 
-        expr := &Literal { value = previous(parser).literal }
+    if match(parser, []Token_Type{.False, .True, .Nil, .Number, .String}) {
+        a := previous(parser)
+        expr := &Literal{ previous(parser).literal }
         return expr, .None
     }
 

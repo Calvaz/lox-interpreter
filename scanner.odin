@@ -1,9 +1,9 @@
 package interpreter
 
 import "core:fmt"
-
 import "core:strconv"
 import "core:builtin"
+import "core:strings"
 
 keywords: map[string]Token_Type = map[string]Token_Type {
     "and" = .And,
@@ -119,11 +119,11 @@ advance :: proc(scanner: ^Scanner) -> rune {
 
 @private
 add_token :: proc(scanner: ^Scanner, type: Token_Type) {
-    add_token_to_scanner(scanner, type, rawptr(uintptr(0)))
+    add_token_to_scanner(scanner, type, nil)
 }
 
 @private
-add_token_to_scanner :: proc(scanner: ^Scanner, type: Token_Type, value: rawptr) {
+add_token_to_scanner :: proc(scanner: ^Scanner, type: Token_Type, value: Token_Value) {
     text := scanner.source[start:current]
     token := new_token(type, text, line, value)
     append(&scanner.tokens, token)
@@ -191,7 +191,7 @@ add_string :: proc(scanner: ^Scanner) {
     advance(scanner)
     
     value := scanner.source[start + 1:current - 1]
-    add_token_to_scanner(scanner, .String, rawptr(&value))
+    add_token_to_scanner(scanner, .String, strings.clone(value))
 }
 
 is_digit :: proc(scanner: ^Scanner, char: rune) -> bool {
@@ -223,7 +223,7 @@ add_number :: proc(scanner: ^Scanner) {
         return
     }
 
-    add_token_to_scanner(scanner, .Number, rawptr(&val_f64))
+    add_token_to_scanner(scanner, .Number, val_f64)
 }
 
 add_keyword :: proc(scanner: ^Scanner) {
@@ -234,7 +234,15 @@ add_keyword :: proc(scanner: ^Scanner) {
     if !ok {
         // it's a variable
         type = .Identifier
+        add_token(scanner, type)
+
+    } else if type == .False {
+        add_token_to_scanner(scanner, type, false)
+    } else if type == .True {
+        add_token_to_scanner(scanner, type, true)
+
+    } else {
+        add_token(scanner, type)
     }
-    add_token(scanner, type)
 }
 

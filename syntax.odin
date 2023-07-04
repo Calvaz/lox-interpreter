@@ -9,12 +9,14 @@ Statement :: union {
     Expression,
     ^Print,
     ^Var,
+    ^Block,
 }
 
 Expression :: union {
     ^Unary,
     ^Binary,
     ^Ternary,
+    ^Assign,
     ^Literal,
     ^Grouping,
     ^Variable,
@@ -37,8 +39,13 @@ Ternary :: struct {
     second_exp: Expression,
 }
 
+Assign :: struct {
+    name: Token,
+    value: Expression,
+}
+
 Literal :: struct {
-    value: rawptr,
+    value: Token_Value,
 }
 
 Grouping :: struct {
@@ -56,6 +63,10 @@ Var :: struct {
 
 Variable :: struct {
     name: Token,
+}
+
+Block :: struct {
+    statements: [dynamic]Statement,
 }
 
 print_expression :: proc{

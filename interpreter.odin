@@ -6,27 +6,26 @@ Interpreter :: struct {
     environment: Environment,
 }
 
-interpret :: proc(statements: [dynamic]Statement) {
-    interpreter := Interpreter { new_environment() }
-    defer delete_environment(&interpreter.environment)
-
+interpret :: proc(interpreter: ^Interpreter, statements: [dynamic]Statement) {
     for st in statements {
-        if _, err := get_exp_value(&interpreter, st); err != .None {
+        if _, err := get_exp_value(interpreter, st); err != .None {
             runtime_error(err.(Runtime_Error))
         }
     }
 }
 
-get_exp_value :: proc(interpreter: ^Interpreter, stmt: Statement) -> (rawptr, Error) {
-    res: rawptr
+get_exp_value :: proc(interpreter: ^Interpreter, stmt: Statement) -> (Token_Value, Error) {
+    res: Token_Value 
     err: Error = .None
     switch s in stmt {
     case ^Print: res, err = get_print_stmt_value(interpreter, s)
     case ^Var: res, err = get_var_stmt_value(interpreter, s)
+    case ^Block: 
     case Expression: {
         switch e in s {
         case ^Unary: res, err = get_unary_exp_value(interpreter, e)
         case ^Binary: res, err = get_binary_exp_value(interpreter, e)
+        case ^Assign: res, err = get_assign_exp_value(interpreter, e)
         case ^Ternary: res, err = get_ternary_exp_value(interpreter, e)
         case ^Literal: res, err = get_literal_exp_value(interpreter, e)
         case ^Grouping: res, err = get_grouping_exp_value(interpreter, e)
@@ -37,15 +36,15 @@ get_exp_value :: proc(interpreter: ^Interpreter, stmt: Statement) -> (rawptr, Er
     return res, err
 }
 
-get_literal_exp_value :: proc(interpreter: ^Interpreter, expr: ^Literal) -> (rawptr, Error)  {
+get_literal_exp_value :: proc(interpreter: ^Interpreter, expr: ^Literal) -> (Token_Value, Error)  {
     return expr.value, .None
 }
 
-get_grouping_exp_value :: proc(interpreter: ^Interpreter, expr: ^Grouping) -> (rawptr, Error) {
+get_grouping_exp_value :: proc(interpreter: ^Interpreter, expr: ^Grouping) -> (Token_Value, Error) {
     return get_exp_value(interpreter, expr.expr)
 }
 
-get_unary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Unary) -> (rawptr, Error) {
+get_unary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Unary) -> (Token_Value, Error) {
     right, err := get_exp_value(interpreter, expr.right)
     if err != .None {
         return nil, err
@@ -53,82 +52,69 @@ get_unary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Unary) -> (rawptr,
 
     #partial switch expr.operator.type {
         case .Bang: {
-            ok := is_truthy(right)
-            return &ok, .None
+            return is_truthy(right), .None
         }
         case .Minus: {
-            f := (^f64)(right)
-            return &f, .None
+            return right.(f64), .None
         }
     }
 
     return nil, .None
 }
 
-get_binary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Binary) -> (rawptr, Error) {
+get_binary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Binary) -> (Token_Value, Error) {
     left, err_l := get_exp_value(interpreter, expr.left)
     if err_l != .None { return nil, err_l }
 
     right, err_r := get_exp_value(interpreter, expr.right)
     if err_l != .None { return nil, err_r }
 
-    res: rawptr
+    res: Token_Value
     err: Error = .None
     #partial switch expr.operator.type {
         case .Greater: {
-            g := (^f64)(left)^ > (^f64)(right)^
-            res = &g
+            res = left.(f64) > right.(f64)
         }
         case .Greater_Equal: {
-            ge := (^f64)(left)^ >= (^f64)(right)^
-            res = &ge
+            res = left.(f64) >= right.(f64)
         }
         case .Less: {
-            l := (^f64)(left)^ < (^f64)(right)^
-            res = &l
+            res = left.(f64) < right.(f64)
         }
         case .Less_Equal: {
-            le := (^f64)(left)^ <= (^f64)(right)^
-            res = &le
+            res = left.(f64) <= right.(f64)
         }
         case .Minus: {
-            sub := (^f64)(left)^ - (^f64)(right)^
-            res = &sub
+            res = left.(f64) - right.(f64)
         }
         case .Plus: {
             if type_of(left) == f64 && type_of(right) == f64 {
-                sum := (^f64)(left)^ + (^f64)(right)^
-                res = &sum
+                res = left.(f64) + right.(f64)
             }
 
             if type_of(left) == string && type_of(right) == string {
-                s := fmt.tprintf("%v %v", (^string)(left)^, (^string)(right)^)
-                res = &s
+                res = fmt.tprintf("%v %v", left.(string), right.(string))
             }
 
             err = Runtime_Error{expr.operator, "Operands must be two numbers or two strings"}
         }
         case .Slash: {
-            slash := (^f64)(left)^ / (^f64)(right)^
-            res = &slash
+            res := left.(f64) / right.(f64)
         }
         case .Star: {
-            star := (^f64)(left)^ * (^f64)(right)^ 
-            res = &star
+            res := left.(f64) * right.(f64)
         }
         case .Bang_Equal: {
-            ok := is_equal(left, right)
-            res = &ok
+            res := is_equal(left, right)
         }
         case .Equal_Equal: {
-            ok := is_equal(left, right)
-            res = &ok
+            res := is_equal(left, right)
         }
     }
-    return res, err
+    return res.(bool), err
 }
 
-get_ternary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Ternary) -> (rawptr, Error) {
+get_ternary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Ternary) -> (Token_Value, Error) {
     left, err_l := get_exp_value(interpreter, expr.left)
     if err_l != .None { return nil, err_l }
 
@@ -144,11 +130,20 @@ get_ternary_exp_value :: proc(interpreter: ^Interpreter, expr: ^Ternary) -> (raw
     return second_exp, .None
 }
 
-get_variable_exp_value :: proc(interpreter: ^Interpreter, variable: ^Variable) -> (rawptr, Error) {
-    return get_environment_value(&interpreter.environment, variable.name)
+get_assign_exp_value :: proc(interpreter: ^Interpreter, expr: ^Assign) -> (Token_Value, Error) {
+    value, err := get_exp_value(interpreter, expr.value)
+    if err != .None {
+        return nil, err
+    }
+    assign_environment_value(&interpreter.environment, expr.name, value)
+    return value, .None
 }
 
-get_print_stmt_value :: proc(interpreter: ^Interpreter, expr: ^Print) -> (rawptr, Error) {
+get_variable_exp_value :: proc(interpreter: ^Interpreter, variable: ^Variable) -> (Token_Value, Error) {
+    return get_environment_value(&interpreter.environment, variable^.name)
+}
+
+get_print_stmt_value :: proc(interpreter: ^Interpreter, expr: ^Print) -> (Token_Value, Error) {
     value, err := get_exp_value(interpreter, expr.expr)
     if err != .None {
         return nil, err
@@ -157,8 +152,8 @@ get_print_stmt_value :: proc(interpreter: ^Interpreter, expr: ^Print) -> (rawptr
     return nil, .None
 }
 
-get_var_stmt_value :: proc(interpreter: ^Interpreter, stmt: ^Var) -> (rawptr, Error) {
-    value: rawptr
+get_var_stmt_value :: proc(interpreter: ^Interpreter, stmt: ^Var) -> (Token_Value, Error) {
+    value: Token_Value
     err: Error
     if stmt.initializer != nil {
         value, err = get_exp_value(interpreter, stmt.initializer)
@@ -171,16 +166,32 @@ get_var_stmt_value :: proc(interpreter: ^Interpreter, stmt: ^Var) -> (rawptr, Er
     return nil, .None
 }
 
-is_truthy :: proc(value: rawptr) -> bool {
+get_block_stmt_value :: proc(interpreter: ^Interpreter, block: ^Block) -> (Token_Value, Error) {
+    previous := interpreter.environment
+    interpreter.environment = new_environment(&interpreter.environment)
+
+    err: Error = .None
+    for st in block.statements {
+        _, e_err := get_exp_value(interpreter, st)
+        if e_err != .None {
+            err = e_err
+        }
+    }
+
+    interpreter.environment = previous
+    return nil, err
+}
+
+is_truthy :: proc(value: Token_Value) -> bool {
     if value == nil { return false }
     if type_of(value) == bool {
-        return (^bool)(value)^
+        return value.(bool)
     }
     
     return false
 }
 
-is_equal :: proc(a: rawptr, b: rawptr) -> bool {
+is_equal :: proc(a: Token_Value, b: Token_Value) -> bool {
     if a == nil && b == nil {
         return true
     }
@@ -195,10 +206,10 @@ cast_error :: proc() -> Error {
     return .Cast
 }
 
-stringify :: proc(value: rawptr) -> string {
+stringify :: proc(value: Token_Value) -> Token_Value {
     if value == nil {
         return "nil"
     }
 
-    return ((^string)(value))^
+    return value
 }

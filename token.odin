@@ -7,10 +7,10 @@ Token :: struct {
     type: Token_Type,
     lexeme: string,
     line: u32,
-    literal: rawptr,
+    literal: Token_Value,
 }
 
-new_token :: proc(type: Token_Type, lexeme: string, line: u32, value: rawptr) -> Token {
+new_token :: proc(type: Token_Type, lexeme: string, line: u32, value: Token_Value) -> Token {
     return Token{ type = type, lexeme = lexeme, line = line, literal = value } 
 }
 
